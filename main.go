@@ -2,20 +2,27 @@ package main
 
 import (
 	"github.com/eltrufas/casino/cmd"
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 	"log"
+	"strings"
 )
 
 func main() {
-	viper.SetConfigName("casino")
-	viper.SetConfigType("json")
-	viper.AddConfigPath(".")
-	viper.SetEnvPrefix("CASINO_")
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatalf("Error loading .env file: %v", err)
+	}
+	replacer := strings.NewReplacer("-", "_", ".", "_")
+	viper.SetEnvKeyReplacer(replacer)
+
 	viper.AutomaticEnv()
 
-	err := viper.ReadInConfig()
+	err = viper.ReadInConfig()
 	if err != nil {
-		log.Fatalf("Unable to read config file: %", err)
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			log.Fatalf("Unable to read config file: %", err)
+		}
 	}
 
 	rootCmd := cmd.BuildRootCommand()
