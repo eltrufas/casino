@@ -1,0 +1,10 @@
+{
+  "database": "./casino.db",
+  "reward": {
+    "amount": 20,
+    "interval": "10s"
+  },
+  "discord": {
+    "token": ""
+  }
+}
