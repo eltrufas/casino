@@ -8,6 +8,12 @@ CREATE TABLE transactions (
 );
 CREATE INDEX transactions_user_id_guild_id
 ON transactions(user_id, guild_id);
+CREATE VIEW balances AS
+SELECT user_id, guild_id, sum(amount) AS balance
+FROM transactions
+GROUP BY user_id, guild_id
+/* balances(user_id,guild_id,balance) */;
 -- Dbmate schema migrations
 INSERT INTO "schema_migrations" (version) VALUES
-  ('20210314074918');
+  ('20210314074918'),
+  ('20210314104217');

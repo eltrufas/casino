@@ -6,16 +6,6 @@ import (
 	"log"
 )
 
-type DiscordVoiceTracker struct {
-	t tracking.Tracker
-}
-
-func NewDiscordVoiceTracker(t tracking.Tracker) *DiscordVoiceTracker {
-	return &DiscordVoiceTracker{
-		t: t,
-	}
-}
-
 func isActive(u *discordgo.VoiceStateUpdate) bool {
 	connected := u.ChannelID != ""
 
@@ -23,7 +13,7 @@ func isActive(u *discordgo.VoiceStateUpdate) bool {
 
 }
 
-func (dt DiscordVoiceTracker) HandleVoiceStateUpdate(s *discordgo.Session, m *discordgo.VoiceStateUpdate) {
+func (c *Client) HandleVoiceStateUpdate(s *discordgo.Session, m *discordgo.VoiceStateUpdate) {
 	log.Printf("Handling event %v", m)
 
 	u := tracking.UserUpdate{
@@ -31,5 +21,5 @@ func (dt DiscordVoiceTracker) HandleVoiceStateUpdate(s *discordgo.Session, m *di
 		GuildID:   m.GuildID,
 		Connected: isActive(m),
 	}
-	dt.t.Enqueue(u)
+	c.tracker.Enqueue(u)
 }

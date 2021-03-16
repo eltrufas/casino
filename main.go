@@ -5,13 +5,16 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 	"log"
+	"os"
 	"strings"
 )
 
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
+		if !os.IsNotExist(err) {
+			log.Fatalf("Error loading .env file: %v", err)
+		}
 	}
 	replacer := strings.NewReplacer("-", "_", ".", "_")
 	viper.SetEnvKeyReplacer(replacer)

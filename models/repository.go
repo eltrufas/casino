@@ -7,6 +7,7 @@ import (
 
 type Repository interface {
 	CreateTransaction(ctx context.Context, txn *Transaction) error
+	GetUserBalance(ctx context.Context, guildID, userID string) (*Balance, error)
 }
 
 type repository struct {

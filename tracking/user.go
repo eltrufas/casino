@@ -2,28 +2,35 @@ package tracking
 
 import (
 	"github.com/eltrufas/casino/rewards"
-	"log"
 	"time"
 )
 
-type userTracker struct {
-	k            userKey
-	updates      chan bool
-	done         chan userKey
-	rewards      chan rewards.Reward
+type userTrackerConfig struct {
 	interval     time.Duration
 	rewardAmount int
+
+	key     userKey
+	clear   chan userKey
+	rewards chan rewards.Reward
+
+	updateHook func(u bool)
+	doneHook   func()
 }
 
-func newUserTracker(k userKey, interval time.Duration, rewardAmount int, done chan userKey, rewards chan rewards.Reward) userTracker {
-	updates := make(chan bool)
+type userTracker struct {
+	userTrackerConfig
+
+	updates chan bool
+	done    chan struct{}
+}
+
+func newUserTracker(config userTrackerConfig) userTracker {
+	updates := make(chan bool, 8)
+	done := make(chan struct{}, 1)
 	t := userTracker{
-		updates:      updates,
-		k:            k,
-		done:         done,
-		interval:     interval,
-		rewardAmount: rewardAmount,
-		rewards:      rewards,
+		userTrackerConfig: config,
+		updates:           updates,
+		done:              done,
 	}
 	return t
 }
@@ -35,27 +42,28 @@ func (t *userTracker) SendUpdate(u bool) {
 func (t userTracker) loop() {
 	connected := false
 	ticker := time.NewTicker(t.interval)
-	log.Printf("Starting loop")
 	defer ticker.Stop()
 	for {
 		select {
 		case u := <-t.updates:
-			log.Printf("Handling update %v", u)
 			if u != connected {
 				ticker.Reset(t.interval)
 			}
 			connected = u
+			if t.updateHook != nil {
+				t.updateHook(connected)
+			}
 		case <-ticker.C:
 			if !connected {
-				t.done <- t.k
+				t.clear <- t.key
+				t.shutdown()
 				return
 			}
 			r := rewards.Reward{
-				UserID:  t.k.UserID,
-				GuildID: t.k.GuildID,
+				UserID:  t.key.UserID,
+				GuildID: t.key.GuildID,
 				Amount:  t.rewardAmount,
 			}
-			log.Printf("Paying out reward")
 			t.rewards <- r
 		case <-t.done:
 			t.shutdown()
@@ -65,9 +73,11 @@ func (t userTracker) loop() {
 }
 
 func (t userTracker) shutdown() {
-	close(t.updates)
+	if t.doneHook != nil {
+		t.doneHook()
+	}
 }
 
 func (t userTracker) Stop() {
-	t.done <- t.k
+	t.done <- struct{}{}
 }

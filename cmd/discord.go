@@ -23,38 +23,46 @@ func BuildDiscordCommand() *cobra.Command {
 	return &cobra.Command{
 		Use: "discord",
 		Run: func(cmd *cobra.Command, args []string) {
-			t, err := tracking.New(viper.GetDuration("reward.interval"), viper.GetInt("reward.amount"))
+			db, err := sqlx.Connect("sqlite3", "./casino.db")
+			if err != nil {
+				log.Fatalf("sqlx.Conntect: %v", err)
+			}
+			repo := models.NewRepository(db)
+
+			tracker, err := tracking.New(viper.GetDuration("reward.interval"), viper.GetInt("reward.amount"))
 			if err != nil {
 				log.Fatalf("Can't create tracker: %w", err)
 			}
-			t.Start()
-
-			d, err := discordgo.New(viper.GetString("discord.token"))
-			d.Identify.Intents = discordgo.IntentsGuildVoiceStates
-			dt := discord.NewDiscordVoiceTracker(t)
-
-			d.AddHandler(dt.HandleVoiceStateUpdate)
-			err = d.Open()
-			if err != nil {
-				log.Fatalf("Unable to connect to discord")
-			}
-
-			db, err := sqlx.Connect("sqlite3", "./casino.db")
-			repo := models.NewRepository(db)
-
-			rewardChan := t.RewardChannel()
-			rewardWorker := rewards.NewRewardWorker(repo, rewardChan)
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
+
+			session, err := discordgo.New(viper.GetString("discord.token"))
+			client := discord.NewClient(repo, tracker)
+
+			session.AddHandler(client.HandleVoiceStateUpdate)
+			middleware := discord.ComposeMiddleware(
+				discord.LogMessage,
+				discord.RequireMention,
+			)
+			h := discord.BuildHandler(middleware(discord.MessageHandler(client.HandleMessage)))
+			session.AddHandler(h)
+			err = session.Open()
+			if err != nil {
+				log.Fatalf("Unable to connect to discord: %v", err)
+			}
+			defer session.Close()
+
+			tracker.Launch(ctx)
+
+			rewardChan := tracker.RewardChannel()
+			rewardWorker := rewards.NewRewardWorker(repo, rewardChan)
 
 			rewardWorker.LaunchWorkers(ctx, 1)
 
 			sc := make(chan os.Signal, 1)
 			signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 			<-sc
-			d.Close()
-			t.Stop()
 		},
 	}
 }

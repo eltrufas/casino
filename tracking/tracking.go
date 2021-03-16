@@ -1,16 +1,16 @@
 package tracking
 
 import (
+	"context"
 	"github.com/eltrufas/casino/rewards"
 	"log"
 	"time"
 )
 
 type Tracker interface {
-	Start()
+	Launch(ctx context.Context)
 	Enqueue(u UserUpdate)
 	RewardChannel() chan rewards.Reward
-	Stop()
 }
 
 type tracker struct {
@@ -19,7 +19,6 @@ type tracker struct {
 	inbox        chan UserUpdate
 	clear        chan userKey
 	rewards      chan rewards.Reward
-	done         chan struct{}
 	rewardAmount int
 }
 
@@ -28,7 +27,6 @@ func New(interval time.Duration, rewardAmount int) (Tracker, error) {
 	inbox := make(chan UserUpdate, 512)
 	clear := make(chan userKey)
 	rewards := make(chan rewards.Reward, 1024)
-	done := make(chan struct{})
 	return &tracker{
 		users:        users,
 		interval:     interval,
@@ -36,7 +34,6 @@ func New(interval time.Duration, rewardAmount int) (Tracker, error) {
 		inbox:        inbox,
 		clear:        clear,
 		rewards:      rewards,
-		done:         done,
 	}, nil
 }
 
@@ -48,11 +45,11 @@ func (t *tracker) RewardChannel() chan rewards.Reward {
 	return t.rewards
 }
 
-func (t *tracker) Start() {
-	go t.loop()
+func (t *tracker) Launch(ctx context.Context) {
+	go t.loop(ctx)
 }
 
-func (t *tracker) loop() {
+func (t *tracker) loop(ctx context.Context) {
 	for {
 		select {
 		case u := <-t.inbox:
@@ -61,16 +58,12 @@ func (t *tracker) loop() {
 		case k := <-t.clear:
 			log.Printf("Clearing %v", k)
 			t.handleClear(k)
-		case <-t.done:
+		case <-ctx.Done():
 			log.Printf("Shutting down")
 			t.handleShutdown()
 			return
 		}
 	}
-}
-
-func (t *tracker) Stop() {
-	t.done <- struct{}{}
 }
 
 func (t *tracker) handleUpdate(e UserUpdate) {
@@ -100,7 +93,14 @@ func (t *tracker) handleShutdown() {
 }
 
 func (t *tracker) launchUserTracker(k userKey) userTracker {
-	ut := newUserTracker(k, t.interval, t.rewardAmount, t.clear, t.rewards)
+	config := userTrackerConfig{
+		interval:     t.interval,
+		rewardAmount: t.rewardAmount,
+		key:          k,
+		clear:        t.clear,
+		rewards:      t.rewards,
+	}
+	ut := newUserTracker(config)
 	go ut.loop()
 	t.users[k] = ut
 	return ut
